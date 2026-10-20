@@ -1,0 +1,57 @@
+pipeline {
+    agent any
+    parameters {
+        booleanParam(name: 'BREAK_MODEL', defaultValue: false,
+                     description: 'Deliberately regress the light model')
+    }
+    environment {
+        PATH = "${WORKSPACE}/venv/bin:${env.PATH}"
+        BREAK = "${params.BREAK_MODEL ? '1' : '0'}"
+    }
+    stages {
+        stage('Setup') {
+            steps { sh 'python3 -m venv venv && pip install -q -r requirements-dev.txt' }
+        }
+        stage('Lint') {
+            steps { sh 'flake8 . --exclude venv,docs --max-line-length 100' }
+        }
+        stage('Unit Tests') {
+            steps { sh 'pytest -q tests' }
+        }
+        stage('Train Models') {
+            steps { sh 'python train.py' }
+        }
+        stage('Model Quality Gate') {
+            steps { sh 'python validate_models.py' }
+        }
+        stage('Build Images') {
+            steps { sh 'docker compose build' }
+        }
+        stage('Deploy') {
+            steps { sh 'docker compose up -d' }
+        }
+        stage('Smoke Test') {
+            steps { sh 'python smoke_test.py' }
+        }
+        stage('Resilience Test') {
+            steps {
+                sh 'docker compose stop model-heavy'
+                sh 'python smoke_test.py degraded'
+                sh 'docker compose start model-heavy'
+                sh 'sleep 5'
+            }
+        }
+        stage('Cost Benchmark') {
+            steps { sh 'python benchmark.py' }
+        }
+    }
+    post {
+        always {
+            archiveArtifacts artifacts: 'benchmark.md, models/metrics.json',
+                             allowEmptyArchive: true
+        }
+        failure {
+            sh 'docker compose logs --tail=40 || true'
+        }
+    }
+}

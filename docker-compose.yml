@@ -1,0 +1,23 @@
+x-model: &model
+  build:
+    context: .
+    dockerfile: model_service/Dockerfile
+  image: modelmux-model
+
+services:
+  model-light:
+    <<: *model
+    environment: [MODEL=light]
+  model-mid:
+    <<: *model
+    environment: [MODEL=mid]
+  model-heavy:
+    <<: *model
+    environment: [MODEL=heavy]
+  router:
+    build:
+      context: .
+      dockerfile: router/Dockerfile
+    ports: ["9000:8000"]
+    environment: [THRESHOLD=0.9]
+    depends_on: [model-light, model-mid, model-heavy]

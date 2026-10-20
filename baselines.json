@@ -1,0 +1,23 @@
+{
+  "light": {
+    "version": "1.0",
+    "accuracy": 0.9722,
+    "f1": 0.972,
+    "size_kb": 6,
+    "latency_ms": 0.002
+  },
+  "mid": {
+    "version": "1.0",
+    "accuracy": 0.9704,
+    "f1": 0.9711,
+    "size_kb": 4517,
+    "latency_ms": 0.015
+  },
+  "heavy": {
+    "version": "1.0",
+    "accuracy": 0.9907,
+    "f1": 0.9909,
+    "size_kb": 433,
+    "latency_ms": 0.041
+  }
+}

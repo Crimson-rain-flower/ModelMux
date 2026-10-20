@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ModelMux</title>
+<style>
+:root{--bg:#f5f6fa;--card:#fff;--ink:#1f2430;--mute:#6b7280;--line:#e5e7eb;
+--light:#2e9e5b;--mid:#d99a00;--heavy:#d9534f;--accent:#3b5bdb}
+@media(prefers-color-scheme:dark){:root{--bg:#14161c;--card:#1d2028;--ink:#e8eaf0;
+--mute:#9aa1b2;--line:#2c303b}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}
+header{padding:18px 28px;display:flex;justify-content:space-between;align-items:center;
+flex-wrap:wrap;gap:12px}
+h1{margin:0;font-size:22px}
+h1 small{display:block;font-size:13px;color:var(--mute);font-weight:400;margin-top:2px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{padding:5px 12px;border-radius:99px;font-size:13px;border:1px solid var(--line);
+background:var(--card)}
+.chip i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;
+background:#999}
+.chip.up i{background:var(--light)}
+.chip.down i{background:var(--heavy)}
+main{display:grid;grid-template-columns:1.25fr 1fr;gap:18px;padding:0 28px 28px}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.col{display:flex;flex-direction:column;gap:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+h2{margin:0 0 12px;font-size:15px}
+.mute{color:var(--mute);font-size:13px}
+#grid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px}
+#grid canvas{width:100%;aspect-ratio:1;border:2px solid var(--line);border-radius:8px;
+cursor:pointer;image-rendering:pixelated;background:#fff}
+#grid canvas:hover,#grid canvas.sel{border-color:var(--accent)}
+.row{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:14px;font-size:14px}
+.row input[type=range]{width:140px}
+button{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:8px 14px;
+font-size:14px;cursor:pointer}
+button.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:wait}
+.res{display:flex;gap:16px;align-items:center;margin-bottom:14px}
+#big{width:84px;height:84px;image-rendering:pixelated;border:1px solid var(--line);
+border-radius:8px;background:#fff}
+#pred{font-size:34px;font-weight:700;line-height:1}
+.badge{display:inline-block;margin:6px 6px 0 0;padding:3px 10px;border-radius:99px;
+font-size:12px;font-weight:600;color:#fff;background:var(--mute)}
+.badge.light{background:var(--light)}
+.badge.mid{background:var(--mid)}
+.badge.heavy{background:var(--heavy)}
+.badge.warn{background:#7c3aed}
+.bar{height:10px;background:var(--line);border-radius:99px;overflow:hidden;margin:4px 0 12px}
+.bar b{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:14px}
+.kv b{text-align:right}
+.big-num{font-size:30px;font-weight:700;color:var(--light)}
+.ok{color:var(--light)}.bad{color:var(--heavy)}
+.use{display:grid;grid-template-columns:60px 1fr 30px;align-items:center;gap:8px;
+font-size:13px;margin-top:8px}
+.use .bar{margin:0}
+</style></head><body>
+<header>
+  <h1>ModelMux<small>Cost-aware multi-model inference router</small></h1>
+  <div class="chips">
+    <span class="chip" id="chip-light"><i></i>light</span>
+    <span class="chip" id="chip-mid"><i></i>mid</span>
+    <span class="chip" id="chip-heavy"><i></i>heavy</span>
+  </div>
+</header>
+<main>
+  <div class="col">
+    <div class="card">
+      <h2>1. Pick a handwritten digit to classify</h2>
+      <div id="grid"></div>
+      <div class="row">
+        <label><input type="checkbox" id="prio"> High priority (go straight to heavy)</label>
+        <label>Confidence threshold
+          <input type="range" id="thr" min="0.5" max="0.99" step="0.01" value="0.9">
+          <b id="thrv">0.90</b></label>
+      </div>
+      <div class="row">
+        <button id="batchbtn" onclick="batch()">Send 50 random requests</button>
+        <button class="alt" onclick="reset()">Reset stats</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Result</h2>
+      <div class="res">
+        <canvas id="big" width="8" height="8"></canvas>
+        <div>
+          <div id="pred">-</div>
+          <div id="verdict" class="mute">Click a digit to send it to the router</div>
+          <div id="badges"></div>
+        </div>
+      </div>
+      <div class="mute">Model confidence</div>
+      <div class="bar"><b id="conf"></b></div>
+      <div class="kv"><span>Cost units</span><b id="cost">-</b>
+        <span>Latency</span><b id="lat">-</b></div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card">
+      <h2>Live cost savings</h2>
+      <div class="mute">Saved vs. always using the heavy model</div>
+      <div class="big-num" id="sv">-</div>
+      <div class="kv" style="margin-top:12px">
+        <span>Requests served</span><b id="n">0</b>
+        <span>ModelMux total cost</span><b id="tc">0</b>
+        <span>Always-heavy total cost</span><b id="hc">0</b>
+        <span>Degraded responses</span><b id="dg">0</b>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Which model answered?</h2>
+      <div class="use"><span>light</span><div class="bar"><b id="u-light"
+        style="background:var(--light)"></b></div><span id="ul-light">0</span></div>
+      <div class="use"><span>mid</span><div class="bar"><b id="u-mid"
+        style="background:var(--mid)"></b></div><span id="ul-mid">0</span></div>
+      <div class="use"><span>heavy</span><div class="bar"><b id="u-heavy"
+        style="background:var(--heavy)"></b></div><span id="ul-heavy">0</span></div>
+    </div>
+    <div class="card">
+      <h2>Resilience demo</h2>
+      <div class="mute">Run <code>docker compose stop model-heavy</code> in a terminal, then
+      send a high-priority request. The heavy chip turns red and the answer comes back from a
+      lower tier marked <b>degraded</b>.</div>
+    </div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const TIERS = ["light", "mid", "heavy"];
+let S = [];
+
+function draw(c, x) {
+  const g = c.getContext("2d"), im = g.createImageData(8, 8);
+  x.forEach((v, i) => {
+    const k = 255 - Math.round(v * 255 / 16);
+    im.data.set([k, k, k, 255], i * 4);
+  });
+  g.putImageData(im, 0, 0);
+}
+
+async function post(i) {
+  const r = await fetch("/predict", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({features: S[i].x, priority: $("prio").checked,
+                          threshold: +$("thr").value})
+  });
+  return [r.ok, await r.json()];
+}
+
+async function pick(i) {
+  document.querySelectorAll("#grid canvas").forEach((c, j) => c.classList.toggle("sel", j === i));
+  draw($("big"), S[i].x);
+  const [ok, d] = await post(i);
+  if (!ok) {
+    $("pred").textContent = "-";
+    $("verdict").innerHTML = '<span class="bad">' + (d.error || "Request failed") + "</span>";
+    $("badges").innerHTML = "";
+    return refresh();
+  }
+  const right = d.label === S[i].y;
+  $("pred").textContent = d.label;
+  $("verdict").innerHTML = right ? '<span class="ok">Correct</span> (actual ' + S[i].y + ")"
+    : '<span class="bad">Wrong</span> (actual ' + S[i].y + ")";
+  $("badges").innerHTML = '<span class="badge ' + d.model + '">answered by ' + d.model + "</span>"
+    + (d.degraded ? '<span class="badge warn">degraded</span>' : "");
+  $("conf").style.width = Math.round(d.confidence * 100) + "%";
+  $("cost").textContent = d.cost;
+  $("lat").textContent = d.latency_ms + " ms";
+  refresh();
+}
+
+async function batch() {
+  $("batchbtn").disabled = true;
+  for (let k = 0; k < 50; k++) await post(Math.floor(Math.random() * S.length));
+  $("batchbtn").disabled = false;
+  refresh();
+}
+
+async function reset() {
+  await fetch("/reset", {method: "POST"});
+  refresh();
+}
+
+async function refresh() {
+  try {
+    const [m, s] = await Promise.all([fetch("/metrics").then(r => r.json()),
+                                      fetch("/status").then(r => r.json())]);
+    TIERS.forEach(t => { $("chip-" + t).className = "chip " + (s[t] ? "up" : "down"); });
+    const n = m.requests, c = m.total_cost, h = n * 10;
+    $("n").textContent = n; $("tc").textContent = c; $("hc").textContent = h;
+    $("dg").textContent = m.degraded;
+    $("sv").textContent = n ? Math.round((1 - c / h) * 100) + "%" : "-";
+    TIERS.forEach(t => {
+      $("u-" + t).style.width = (n ? m.by_model[t] / n * 100 : 0) + "%";
+      $("ul-" + t).textContent = m.by_model[t];
+    });
+  } catch (e) { /* router unreachable */ }
+}
+
+$("thr").oninput = () => { $("thrv").textContent = (+$("thr").value).toFixed(2); };
+
+(async () => {
+  S = await (await fetch("/samples")).json();
+  S.forEach((s, i) => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 8;
+    draw(c, s.x);
+    c.onclick = () => pick(i);
+    $("grid").appendChild(c);
+  });
+  refresh();
+  setInterval(refresh, 3000);
+})();
+</script></body></html>
